@@ -1,19 +1,28 @@
   'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Building2 } from 'lucide-react';
+import { Loader2, Building2, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { getCurrentApiBaseUrl } from '@/lib/config';
 
 export default function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showApiConfig, setShowApiConfig] = useState(false);
+  const [apiUrl, setApiUrl] = useState('');
   const { login, isLoading } = useAuth();
+
+  // Get current API URL on mount
+  useEffect(() => {
+    const currentUrl = getCurrentApiBaseUrl();
+    setApiUrl(currentUrl);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +40,15 @@ export default function LoginForm() {
       }
     } catch (error: any) {
       setError(error.message || 'Login failed. Please try again.');
+    }
+  };
+
+  const handleApiUrlSave = () => {
+    if (apiUrl.trim()) {
+      localStorage.setItem('api_base_url', apiUrl.trim());
+      setError('');
+      // Force page reload to apply new API URL
+      window.location.reload();
     }
   };
 
@@ -103,6 +121,57 @@ export default function LoginForm() {
                 )}
               </Button>
             </form>
+
+            {/* API Configuration Section */}
+            <div className="border-t pt-4 mt-4">
+              <button
+                type="button"
+                onClick={() => setShowApiConfig(!showApiConfig)}
+                className="w-full flex items-center justify-between text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  <span>API Configuration</span>
+                </div>
+                {showApiConfig ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+              
+              {showApiConfig && (
+                <div className="mt-3 space-y-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="api-url" className="text-xs">API Base URL</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="api-url"
+                        type="text"
+                        value={apiUrl}
+                        onChange={(e) => setApiUrl(e.target.value)}
+                        placeholder="http://your-api-server:9001"
+                        className="h-9 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleApiUrlSave}
+                        size="sm"
+                        className="h-9"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Current: {getCurrentApiBaseUrl()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Update the API URL if you're having connection issues. The page will reload after saving.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
