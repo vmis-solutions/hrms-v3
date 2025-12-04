@@ -9,7 +9,7 @@ services:
         - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://172.20.10.168:9001}
     container_name: hrms-frontend
     ports:
-      - "8080:80"
+      - "9002:80"
     restart: unless-stopped
     networks:
       - hrms-network
