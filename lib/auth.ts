@@ -1,6 +1,6 @@
 import { User, UserRole } from '@/types';
 import { apiFetch } from '@/lib/api';
-import { getApiUrl } from '@/lib/config';
+import { getApiUrl, getCurrentApiBaseUrl } from '@/lib/config';
 
 interface LoginResponse {
   success: boolean;
@@ -32,8 +32,12 @@ const parseFullName = (fullName: string): { firstName: string; lastName: string 
 };
 
 export const authenticate = async (username: string, password: string): Promise<{ user: User; token: string } | null> => {
+  const apiUrl = getApiUrl('/api/Auth/login');
+  
   try {
-    const response = await fetch(getApiUrl('/api/Auth/login'), {
+    console.log('Attempting login to:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,6 +61,12 @@ export const authenticate = async (username: string, password: string): Promise<
       } catch {
         errorMessage = errorText || errorMessage;
       }
+      console.error('Login API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url: apiUrl,
+        error: errorMessage
+      });
       throw new Error(errorMessage);
     }
 
@@ -81,10 +91,21 @@ export const authenticate = async (username: string, password: string): Promise<
 
     throw new Error(result.message || 'Login failed');
   } catch (error: any) {
-    console.error('Authentication error:', error);
+    console.error('Authentication error:', {
+      error,
+      apiUrl,
+      message: error.message
+    });
+    
     // Provide more helpful error messages
-    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS is properly configured.');
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.name === 'TypeError') {
+      const apiBaseUrl = getCurrentApiBaseUrl();
+      throw new Error(
+        `Unable to connect to the API server at ${apiBaseUrl}. ` +
+        `Please check: 1) The API server is running, 2) The API URL is correct, ` +
+        `3) CORS is properly configured. ` +
+        `You can set the API URL by running: localStorage.setItem('api_base_url', 'http://your-api-url') in the browser console.`
+      );
     }
     if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
       throw new Error('SSL certificate error. The API server uses a self-signed certificate. Please accept the certificate in your browser or configure the API to use a trusted certificate.');

@@ -39,7 +39,7 @@ import { Employee, EmploymentStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditEmployee } from '@/lib/auth';
 import { uploadEmployeeDocument, getEmployeeDocuments, deleteEmployeeDocument, EmployeeDocumentResponse } from '@/lib/employees';
-import { API_BASE_URL } from '@/lib/config';
+import { getCurrentApiBaseUrl } from '@/lib/config';
 import { toast } from 'sonner';
 
 interface EmployeeProfileProps {
@@ -63,7 +63,7 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
-  const documentViewBaseUrl = `${API_BASE_URL.replace(/\/$/, '')}/EmployeeDocs`;
+  const documentViewBaseUrl = `${getCurrentApiBaseUrl().replace(/\/$/, '')}/EmployeeDocs`;
 
   const loadEmployeeDocuments = useCallback(async () => {
     setDocumentsLoading(true);
