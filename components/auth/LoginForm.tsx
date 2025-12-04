@@ -6,14 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Building2, Users } from 'lucide-react';
+import { Loader2, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [showDemo, setShowDemo] = useState(false);
   const { login, isLoading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,18 +34,6 @@ export default function LoginForm() {
     }
   };
 
-  const demoAccounts = [
-    { email: 'hr.manager@company.com', role: 'HR Manager', description: 'Full system access across all companies' },
-    { email: 'hr.supervisor@company.com', role: 'HR Supervisor', description: 'Company-wide HR operations' },
-    { email: 'hr.company@company.com', role: 'HR Company Level', description: 'Company-specific HR operations' },
-    { email: 'dept.head@company.com', role: 'Department Head', description: 'Department employee management' },
-    { email: 'employee@company.com', role: 'Employee', description: 'Limited employee access' }
-  ];
-
-  const loginWithDemo = (demoUsername: string) => {
-    setUsername(demoUsername);
-    setPassword('password123');
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
@@ -116,38 +103,6 @@ export default function LoginForm() {
                 )}
               </Button>
             </form>
-
-            <div className="text-center">
-              <Button
-                variant="outline"
-                onClick={() => setShowDemo(!showDemo)}
-                className="text-sm"
-              >
-                <Users className="mr-2 h-4 w-4" />
-                {showDemo ? 'Hide' : 'Show'} Demo Accounts
-              </Button>
-            </div>
-
-            {showDemo && (
-              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-700">Demo Accounts (Password: password123)</p>
-                {demoAccounts.map((account, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-white rounded border cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => loginWithDemo(account.email)}
-                  >
-                    <div>
-                      <p className="font-medium text-sm">{account.role}</p>
-                      <p className="text-xs text-gray-500">{account.description}</p>
-                    </div>
-                    <Button size="sm" variant="ghost">
-                      Use
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
           </CardContent>
         </Card>
 
