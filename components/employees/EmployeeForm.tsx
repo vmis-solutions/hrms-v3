@@ -24,8 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Employee, EmploymentStatus, Gender, CivilStatus } from '@/types';
-import { createEmployee, updateEmployee, getDepartments, getJobTitles } from '@/lib/employees';
+import { Company, Department, Employee, EmploymentStatus, Gender, CivilStatus, JobTitle } from '@/types';
+import { createEmployee, updateEmployee, EmployeeInput } from '@/lib/employees';
+import { getJobTitles } from '@/lib/jobTitles';
+import { getDepartments } from '@/lib/departments';
+import { getCompanies } from '@/lib/companies';
 import { toast } from 'sonner';
 
 interface EmployeeFormProps {
@@ -34,37 +37,65 @@ interface EmployeeFormProps {
   onSave: (employee: Employee) => void;
 }
 
+type EmployeeFormState = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  birthDate: string;
+  gender: Gender | '';
+  civilStatus: CivilStatus | '';
+  email: string;
+  phoneNumber: string;
+  address: string;
+  sssNumber: string;
+  philHealthNumber: string;
+  pagIbigNumber: string;
+  tin: string;
+  employeeNumber: string;
+  dateHired: string;
+  companyId: string;
+  departmentId: string;
+  jobTitleId: string;
+  employmentStatus: EmploymentStatus | '';
+  avatar: string;
+};
+
+const formatDateForInput = (value: string) => {
+  if (!value) return '';
+  return value.includes('T') ? value.split('T')[0] : value;
+};
+
 export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormProps) {
-  const [formData, setFormData] = useState({
-    // Personal Info
+  const initialState: EmployeeFormState = {
+    userId: '',
     firstName: '',
     lastName: '',
     middleName: '',
     birthDate: '',
     gender: '' as Gender | '',
     civilStatus: '' as CivilStatus | '',
-    
-    // Contact Info
     email: '',
     phoneNumber: '',
     address: '',
-    
-    // Government IDs
     sssNumber: '',
     philHealthNumber: '',
     pagIbigNumber: '',
     tin: '',
-    
-    // Employment Info
     employeeNumber: '',
     dateHired: '',
-    jobTitle: '',
-    department: '',
-    employmentStatus: '' as EmploymentStatus | ''
-  });
+    companyId: '',
+    departmentId: '',
+    jobTitleId: '',
+    employmentStatus: '' as EmploymentStatus | '',
+    avatar: '',
+  };
 
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [jobTitles, setJobTitles] = useState<string[]>([]);
+  const [formData, setFormData] = useState<EmployeeFormState>(initialState);
+
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -72,10 +103,11 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
   useEffect(() => {
     if (employee) {
       setFormData({
+        userId: employee.userId || '',
         firstName: employee.firstName,
         lastName: employee.lastName,
         middleName: employee.middleName || '',
-        birthDate: employee.birthDate,
+        birthDate: formatDateForInput(employee.birthDate),
         gender: employee.gender,
         civilStatus: employee.civilStatus,
         email: employee.email,
@@ -86,23 +118,29 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
         pagIbigNumber: employee.pagIbigNumber || '',
         tin: employee.tin || '',
         employeeNumber: employee.employeeNumber,
-        dateHired: employee.dateHired,
-        jobTitle: employee.jobTitle,
-        department: employee.department,
-        employmentStatus: employee.employmentStatus
+        dateHired: formatDateForInput(employee.dateHired),
+        companyId: employee.companyId || '',
+        departmentId: employee.departmentId || '',
+        jobTitleId: employee.jobTitleId || '',
+        employmentStatus: employee.employmentStatus,
+        avatar: employee.avatar || '',
       });
+    } else {
+      setFormData(initialState);
     }
     loadFormData();
   }, [employee]);
 
   const loadFormData = async () => {
     try {
-      const [departmentsData, jobTitlesData] = await Promise.all([
+      const [companiesData, departmentsData, jobTitlesData] = await Promise.all([
+        getCompanies(),
         getDepartments(),
-        getJobTitles()
+        getJobTitles({ pageSize: 200 })
       ]);
-      setDepartments(departmentsData.map(d => d.name));
-      setJobTitles(jobTitlesData.map(j => j.title));
+      setCompanies(companiesData);
+      setDepartments(departmentsData);
+      setJobTitles(jobTitlesData);
     } catch (error) {
       console.error('Error loading form data:', error);
       toast.error('Failed to load form data');
@@ -125,8 +163,9 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
     if (!formData.address.trim()) newErrors.address = 'Address is required';
     if (!formData.employeeNumber.trim()) newErrors.employeeNumber = 'Employee number is required';
     if (!formData.dateHired) newErrors.dateHired = 'Date hired is required';
-    if (!formData.jobTitle.trim()) newErrors.jobTitle = 'Job title is required';
-    if (!formData.department) newErrors.department = 'Department is required';
+    if (!formData.companyId) newErrors.companyId = 'Company is required';
+    if (!formData.departmentId) newErrors.departmentId = 'Department is required';
+    if (!formData.jobTitleId) newErrors.jobTitleId = 'Job title is required';
     if (!formData.employmentStatus) newErrors.employmentStatus = 'Employment status is required';
 
     // Email validation
@@ -162,17 +201,28 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
     try {
       let savedEmployee: Employee;
       
-      const employeeData = {
-        ...formData,
+      const employeeData: EmployeeInput = {
+        userId: employee ? formData.userId.trim() : '',
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        middleName: formData.middleName.trim() || undefined,
+        birthDate: formData.birthDate,
         gender: formData.gender as Gender,
         civilStatus: formData.civilStatus as CivilStatus,
+        email: formData.email.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
+        address: formData.address.trim(),
+        sssNumber: formData.sssNumber.trim() || undefined,
+        philHealthNumber: formData.philHealthNumber.trim() || undefined,
+        pagIbigNumber: formData.pagIbigNumber.trim() || undefined,
+        tin: formData.tin.trim() || undefined,
+        employeeNumber: formData.employeeNumber.trim(),
+        dateHired: formData.dateHired,
+        companyId: formData.companyId,
+        departmentId: formData.departmentId,
+        jobTitleId: formData.jobTitleId,
         employmentStatus: formData.employmentStatus as EmploymentStatus,
-        // Remove empty optional fields
-        middleName: formData.middleName || undefined,
-        sssNumber: formData.sssNumber || undefined,
-        philHealthNumber: formData.philHealthNumber || undefined,
-        pagIbigNumber: formData.pagIbigNumber || undefined,
-        tin: formData.tin || undefined
+        avatar: formData.avatar.trim() || undefined,
       };
       
       if (employee) {
@@ -186,20 +236,136 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
       }
       
       onSave(savedEmployee);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving employee:', error);
-      toast.error('Failed to save employee');
+      
+      // Check if this is a validation error with field-specific errors
+      if (error.validationErrors && Array.isArray(error.validationErrors)) {
+        const newErrors: Record<string, string> = {};
+        
+        // Map API field names to form field names
+        const fieldNameMap: Record<string, string> = {
+          'Email': 'email',
+          'FirstName': 'firstName',
+          'LastName': 'lastName',
+          'MiddleName': 'middleName',
+          'PhoneNumber': 'phoneNumber',
+          'Address': 'address',
+          'EmployeeNumber': 'employeeNumber',
+          'BirthDate': 'birthDate',
+          'DateHired': 'dateHired',
+          'Gender': 'gender',
+          'CivilStatus': 'civilStatus',
+          'CompanyId': 'companyId',
+          'DepartmentId': 'departmentId',
+          'JobTitleId': 'jobTitleId',
+          'EmploymentStatus': 'employmentStatus',
+          'UserId': 'userId',
+          'SssNumber': 'sssNumber',
+          'PhilHealthNumber': 'philHealthNumber',
+          'PagIbigNumber': 'pagIbigNumber',
+          'Tin': 'tin',
+        };
+        
+        // Process each validation error
+        error.validationErrors.forEach((validationError: { field: string; message: string; value?: string }) => {
+          const formFieldName = fieldNameMap[validationError.field] || validationError.field.toLowerCase();
+          newErrors[formFieldName] = validationError.message;
+          
+          // Show toast for each validation error
+          toast.error(`${validationError.field}: ${validationError.message}`, {
+            duration: 5000,
+          });
+        });
+        
+        // Set errors in form state
+        setErrors(newErrors);
+        
+        // Show a general error message
+        toast.error('Please fix the validation errors below', {
+          duration: 3000,
+        });
+      } else {
+        // Generic error handling
+        const errorMessage = error.message || 'Failed to save employee';
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const clearFieldError = (field: string) => {
+    setErrors(prev => {
+      if (!prev[field]) return prev;
+      const updated = { ...prev };
+      delete updated[field];
+      return updated;
+    });
+  };
+
+  const handleInputChange = (field: keyof EmployeeFormState, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+    clearFieldError(field);
+  };
+
+  const handleCompanySelect = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      companyId: value,
+      departmentId: '',
+      jobTitleId: '',
+    }));
+    clearFieldError('companyId');
+    clearFieldError('departmentId');
+    clearFieldError('jobTitleId');
+  };
+
+  const handleDepartmentSelect = (value: string) => {
+    const selectedDepartment = departments.find(dept => dept.id === value);
+    setFormData(prev => ({
+      ...prev,
+      departmentId: value,
+      jobTitleId: '',
+      companyId: selectedDepartment ? selectedDepartment.companyId : prev.companyId,
+    }));
+    clearFieldError('departmentId');
+    if (selectedDepartment?.companyId) {
+      clearFieldError('companyId');
+    }
+    clearFieldError('jobTitleId');
+  };
+
+  const handleJobTitleSelect = (value: string) => {
+    const selectedJobTitle = jobTitles.find(job => job.id === value);
+    setFormData(prev => ({
+      ...prev,
+      jobTitleId: value,
+      departmentId: selectedJobTitle?.departmentId || prev.departmentId,
+      companyId: selectedJobTitle?.companyId || prev.companyId,
+    }));
+    clearFieldError('jobTitleId');
+    if (selectedJobTitle?.departmentId) {
+      clearFieldError('departmentId');
+    }
+    if (selectedJobTitle?.companyId) {
+      clearFieldError('companyId');
     }
   };
+
+  const filteredDepartments = formData.companyId
+    ? departments.filter(dept => dept.companyId === formData.companyId)
+    : departments;
+
+  const filteredJobTitles = jobTitles.filter(job => {
+    if (formData.departmentId) {
+      return job.departmentId === formData.departmentId;
+    }
+    if (formData.companyId && job.companyId) {
+      return job.companyId === formData.companyId;
+    }
+    return true;
+  });
 
   if (loadingData) {
     return (
@@ -270,6 +436,16 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
                 />
                 {errors.lastName && <p className="text-sm text-red-600">{errors.lastName}</p>}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="avatar">Avatar URL</Label>
+              <Input
+                id="avatar"
+                value={formData.avatar}
+                onChange={(e) => handleInputChange('avatar', e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -452,33 +628,70 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="jobTitle">Job Title *</Label>
-                <Select value={formData.jobTitle} onValueChange={(value) => handleInputChange('jobTitle', value)}>
-                  <SelectTrigger className={errors.jobTitle ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select job title" />
+                <Label htmlFor="companyId">Company *</Label>
+                <Select value={formData.companyId} onValueChange={handleCompanySelect}>
+                  <SelectTrigger className={errors.companyId ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select company" />
                   </SelectTrigger>
                   <SelectContent>
-                    {jobTitles.map(title => (
-                      <SelectItem key={title} value={title}>{title}</SelectItem>
+                    {companies.map(company => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.jobTitle && <p className="text-sm text-red-600">{errors.jobTitle}</p>}
+                {errors.companyId && <p className="text-sm text-red-600">{errors.companyId}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="department">Department *</Label>
-                <Select value={formData.department} onValueChange={(value) => handleInputChange('department', value)}>
-                  <SelectTrigger className={errors.department ? 'border-red-500' : ''}>
+                <Label htmlFor="departmentId">Department *</Label>
+                <Select value={formData.departmentId} onValueChange={handleDepartmentSelect}>
+                  <SelectTrigger className={errors.departmentId ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    {departments.map(dept => (
-                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                    {filteredDepartments.map(dept => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}{dept.companyName ? ` • ${dept.companyName}` : ''}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.department && <p className="text-sm text-red-600">{errors.department}</p>}
+                {errors.departmentId && <p className="text-sm text-red-600">{errors.departmentId}</p>}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="jobTitleId">Job Title *</Label>
+              <Select
+                value={formData.jobTitleId}
+                onValueChange={handleJobTitleSelect}
+                disabled={filteredJobTitles.length === 0}
+              >
+                <SelectTrigger className={errors.jobTitleId ? 'border-red-500' : ''}>
+                  <SelectValue
+                    placeholder={
+                      filteredJobTitles.length === 0
+                        ? 'No job titles available'
+                        : 'Select job title'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredJobTitles.length === 0 ? (
+                    <SelectItem value="no-options" disabled>
+                      No job titles available
+                    </SelectItem>
+                  ) : (
+                    filteredJobTitles.map(job => (
+                      <SelectItem key={job.id} value={job.id}>
+                        {job.title}{job.departmentName ? ` • ${job.departmentName}` : ''}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {errors.jobTitleId && <p className="text-sm text-red-600">{errors.jobTitleId}</p>}
             </div>
 
             <div className="space-y-2">
@@ -492,6 +705,8 @@ export default function EmployeeForm({ employee, onBack, onSave }: EmployeeFormP
                   <SelectItem value="Regular">Regular</SelectItem>
                   <SelectItem value="Contractual">Contractual</SelectItem>
                   <SelectItem value="ProjectBased">Project Based</SelectItem>
+                  <SelectItem value="Resigned">Resigned</SelectItem>
+                  <SelectItem value="Terminated">Terminated</SelectItem>
                 </SelectContent>
               </Select>
               {errors.employmentStatus && <p className="text-sm text-red-600">{errors.employmentStatus}</p>}

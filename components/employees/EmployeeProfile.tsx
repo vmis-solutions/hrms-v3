@@ -1,11 +1,22 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { 
   ArrowLeft, 
   Edit, 
@@ -21,11 +32,15 @@ import {
   CreditCard,
   Receipt,
   Cake,
-  Users
+  Users,
+  Upload
 } from 'lucide-react';
 import { Employee, EmploymentStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditEmployee } from '@/lib/auth';
+import { uploadEmployeeDocument, getEmployeeDocuments, deleteEmployeeDocument, EmployeeDocumentResponse } from '@/lib/employees';
+import { API_BASE_URL } from '@/lib/config';
+import { toast } from 'sonner';
 
 interface EmployeeProfileProps {
   employee: Employee;
@@ -35,6 +50,120 @@ interface EmployeeProfileProps {
 
 export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeeProfileProps) {
   const { user } = useAuth();
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    documentName: '',
+    documentType: '',
+    documentDescription: '',
+    document: null as File | null,
+  });
+  const [documents, setDocuments] = useState<EmployeeDocumentResponse[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  const documentViewBaseUrl = `${API_BASE_URL.replace(/\/$/, '')}/EmployeeDocs`;
+
+  const loadEmployeeDocuments = useCallback(async () => {
+    setDocumentsLoading(true);
+    try {
+      const result = await getEmployeeDocuments(employee.id);
+      setDocuments(result);
+      setDocumentsError(null);
+    } catch (error: any) {
+      console.error('Error fetching employee documents:', error);
+      setDocumentsError(error.message || 'Failed to load documents');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [employee.id]);
+
+  useEffect(() => {
+    loadEmployeeDocuments();
+  }, [loadEmployeeDocuments]);
+
+  const buildDocumentUrl = (filePath?: string | null) => {
+    if (!filePath) return null;
+    let cleaned = filePath.trim().replace(/\\/g, '/');
+    if (!cleaned) return null;
+    if (!cleaned.startsWith('/')) {
+      cleaned = `/${cleaned}`;
+    }
+    return encodeURI(`${documentViewBaseUrl}${cleaned}`);
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    const confirmed = window.confirm('Delete this document? This action cannot be undone.');
+    if (!confirmed) return;
+    setDeletingDocId(documentId);
+    try {
+      await deleteEmployeeDocument(documentId);
+      toast.success('Document deleted successfully');
+      await loadEmployeeDocuments();
+    } catch (error: any) {
+      console.error('Error deleting document:', error);
+      toast.error(error.message || 'Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        toast.error('Please upload a PDF file only');
+        return;
+      }
+      setUploadForm(prev => ({ ...prev, document: file }));
+    }
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!uploadForm.document) {
+      toast.error('Please select a PDF file to upload');
+      return;
+    }
+
+    if (!uploadForm.documentName.trim()) {
+      toast.error('Please enter a document name');
+      return;
+    }
+
+    if (!uploadForm.documentType.trim()) {
+      toast.error('Please enter a document type');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      await uploadEmployeeDocument({
+        documentName: uploadForm.documentName,
+        documentType: uploadForm.documentType,
+        documentDescription: uploadForm.documentDescription,
+        document: uploadForm.document,
+        employeeId: employee.id,
+      });
+      
+      toast.success('Document uploaded successfully');
+      setUploadDialogOpen(false);
+      setUploadForm({
+        documentName: '',
+        documentType: '',
+        documentDescription: '',
+        document: null,
+      });
+      await loadEmployeeDocuments();
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      toast.error(error.message || 'Failed to upload document');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const getStatusBadge = (status: EmploymentStatus) => {
     const variants: { [key: string]: { variant: 'default' | 'secondary' | 'destructive' | 'outline', className: string } } = {
@@ -91,6 +220,80 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
 
   return (
     <div className="space-y-6">
+      {/* Upload Document Dialog - Single instance for all buttons */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Upload Employee Document</DialogTitle>
+            <DialogDescription>
+              Upload a PDF document for this employee. All fields are required.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUploadSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="documentName">Document Name *</Label>
+                <Input
+                  id="documentName"
+                  placeholder="e.g., Employment Contract"
+                  value={uploadForm.documentName}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, documentName: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="documentType">Document Type *</Label>
+                <Input
+                  id="documentType"
+                  placeholder="e.g., Contract, Certificate, ID"
+                  value={uploadForm.documentType}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, documentType: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="documentDescription">Description</Label>
+                <Textarea
+                  id="documentDescription"
+                  placeholder="Optional description of the document"
+                  value={uploadForm.documentDescription}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, documentDescription: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="document">PDF File *</Label>
+                <Input
+                  id="document"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  required
+                />
+                {uploadForm.document && (
+                  <p className="text-sm text-gray-600">
+                    Selected: {uploadForm.document.name}
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUploadDialogOpen(false)}
+                disabled={uploading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={uploading}>
+                {uploading ? 'Uploading...' : 'Upload'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
@@ -102,24 +305,34 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
             <p className="text-gray-600">Complete employee information and records</p>
           </div>
         </div>
-        {canEditEmployee(user?.role || 'EMPLOYEE') && (
-          <Button onClick={() => onEdit(employee)} className="bg-blue-600 hover:bg-blue-700">
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Profile
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setUploadDialogOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Upload PDF
           </Button>
-        )}
+          {canEditEmployee(user?.role || 'EMPLOYEE') && (
+            <Button onClick={() => onEdit(employee)} className="bg-blue-600 hover:bg-blue-700">
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Profile
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Profile Information */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <User className="h-5 w-5" />
-              <span>Personal & Employment Information</span>
-            </CardTitle>
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center space-x-2">
+                <User className="h-5 w-5" />
+                <span>Personal & Employment Information</span>
+              </CardTitle>
+              
+            </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+            <CardContent className="space-y-6">
             {/* Profile Header */}
             <div className="flex items-start space-x-6">
               <Avatar className="h-24 w-24">
@@ -139,12 +352,12 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
                   <div className="flex items-center space-x-2">
                     <Building className="h-4 w-4 text-gray-400" />
                     <span className="text-gray-600">Position:</span>
-                    <span className="font-medium">{employee.jobTitle}</span>
+                    <span className="font-medium">{employee.jobTitle || ''}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Building className="h-4 w-4 text-gray-400" />
                     <span className="text-gray-600">Department:</span>
-                    <span className="font-medium">{employee.department}</span>
+                    <span className="font-medium">{employee.department || ''}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <FileText className="h-4 w-4 text-gray-400" />
@@ -221,10 +434,13 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
 
             {/* Employment Information */}
             <div className="space-y-4">
-              <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
-                <Building className="h-4 w-4" />
-                <span>Employment Details</span>
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                  <Building className="h-4 w-4" />
+                  <span>Employment Details</span>
+                </h4>
+                
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center space-x-2">
                   <Calendar className="h-3 w-3 text-gray-400" />
@@ -238,8 +454,85 @@ export default function EmployeeProfile({ employee, onBack, onEdit }: EmployeePr
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-col gap-2">
+              <CardTitle className="flex items-center space-x-2">
+                <FileText className="h-5 w-5" />
+                <span>Employee Documents</span>
+              </CardTitle>
+              <p className="text-sm text-gray-500">
+                Quick list of uploaded PDF files. Click view to open the document.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {documentsLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, idx) => (
+                    <div key={idx} className="h-10 rounded-md bg-gray-100 animate-pulse" />
+                  ))}
+                </div>
+              ) : documentsError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {documentsError}
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="py-4 text-center text-sm text-gray-500">
+                  No documents uploaded yet.
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {documents.map((doc) => {
+                    const fileUrl = buildDocumentUrl(doc.filePath);
+                    return (
+                      <div
+                        key={doc.id}
+                        className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {doc.documentName || 'Untitled document'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {doc.filePath || 'No file path'}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Uploaded {formatDate(doc.uploadedDate)}
+                          </p>
+                          {doc.documentDescription && (
+                            <p className="text-xs text-gray-500">{doc.documentDescription}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {fileUrl ? (
+                            <Button variant="link" size="sm" className="px-0" asChild>
+                              <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+                                View PDF
+                              </a>
+                            </Button>
+                          ) : (
+                          <span className="text-xs text-gray-400">No file path</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 px-0"
+                            disabled={deletingDocId === doc.id}
+                            onClick={() => handleDeleteDocument(doc.id)}
+                          >
+                            {deletingDocId === doc.id ? 'Deleting...' : 'Delete'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Sidebar Information */}
         <div className="space-y-6">

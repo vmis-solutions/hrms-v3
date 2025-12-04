@@ -12,14 +12,21 @@ import EmployeeProfile from '@/components/employees/EmployeeProfile';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import DepartmentList from '@/components/departments/DepartmentList';
 import DepartmentForm from '@/components/departments/DepartmentForm';
+import DepartmentHRAssignment from '@/components/departments/DepartmentHRAssignment';
+import CompanyList from '@/components/companies/CompanyList';
+import CompanyForm from '@/components/companies/CompanyForm';
 import JobTitleList from '@/components/jobtitles/JobTitleList';
 import JobTitleForm from '@/components/jobtitles/JobTitleForm';
+import UserList from '@/components/users/UserList';
+import UserForm from '@/components/users/UserForm';
 import LeaveApplicationList from '@/components/leaves/LeaveApplicationList';
 import LeaveApplicationForm from '@/components/leaves/LeaveApplicationForm';
 import LeaveApplicationDetail from '@/components/leaves/LeaveApplicationDetail';
 import MyProfile from '@/components/profile/MyProfile';
-import { Employee, Department, JobTitle, LeaveApplication } from '@/types';
-import { Loader2 } from 'lucide-react';
+import { Employee, Department, Company, JobTitle, LeaveApplication, SystemUser } from '@/types';
+import { Loader2, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 function Dashboard() {
   const { user, isLoading } = useAuth();
@@ -28,8 +35,13 @@ function Dashboard() {
   const [isEditingEmployee, setIsEditingEmployee] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
   const [isEditingDepartment, setIsEditingDepartment] = useState(false);
+  const [isAssigningHRManagers, setIsAssigningHRManagers] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [selectedJobTitle, setSelectedJobTitle] = useState<JobTitle | null>(null);
   const [isEditingJobTitle, setIsEditingJobTitle] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
+  const [isEditingUser, setIsEditingUser] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveApplication | null>(null);
   const [isEditingLeave, setIsEditingLeave] = useState(false);
 
@@ -79,8 +91,41 @@ function Dashboard() {
   };
 
   const handleDepartmentSave = (department: Department) => {
-    setSelectedDepartment(department);
+    setSelectedDepartment(null);
     setIsEditingDepartment(false);
+  };
+
+  const handleAssignHRManagers = () => {
+    setIsAssigningHRManagers(true);
+  };
+
+  const handleHRAssignmentBack = () => {
+    setIsAssigningHRManagers(false);
+  };
+
+  const handleCompanySelect = (company: Company) => {
+    setSelectedCompany(company);
+    setIsEditingCompany(false);
+  };
+
+  const handleCompanyEdit = (company: Company) => {
+    setSelectedCompany(company);
+    setIsEditingCompany(true);
+  };
+
+  const handleCompanyAdd = () => {
+    setSelectedCompany(null);
+    setIsEditingCompany(true);
+  };
+
+  const handleCompanyBackToList = () => {
+    setSelectedCompany(null);
+    setIsEditingCompany(false);
+  };
+
+  const handleCompanySave = (company: Company) => {
+    setSelectedCompany(company);
+    setIsEditingCompany(false);
   };
 
   const handleJobTitleSelect = (jobTitle: JobTitle) => {
@@ -104,8 +149,35 @@ function Dashboard() {
   };
 
   const handleJobTitleSave = (jobTitle: JobTitle) => {
-    setSelectedJobTitle(jobTitle);
+    setSelectedJobTitle(null);
     setIsEditingJobTitle(false);
+    toast.success(`${jobTitle.title} saved successfully`);
+  };
+
+  const handleUserSelect = (user: SystemUser) => {
+    setSelectedUser(user);
+    setIsEditingUser(false);
+  };
+
+  const handleUserEdit = (user: SystemUser) => {
+    setSelectedUser(user);
+    setIsEditingUser(true);
+  };
+
+  const handleUserAdd = () => {
+    setSelectedUser(null);
+    setIsEditingUser(true);
+  };
+
+  const handleUserBackToList = () => {
+    setSelectedUser(null);
+    setIsEditingUser(false);
+  };
+
+  const handleUserSave = (user: SystemUser) => {
+    setSelectedUser(null);
+    setIsEditingUser(false);
+    toast.success(`User ${user.userName} saved successfully`);
   };
 
   const handleLeaveSelect = (leave: LeaveApplication) => {
@@ -214,7 +286,56 @@ function Dashboard() {
       );
     }
 
+    if (activeTab === 'companies') {
+      if (isEditingCompany) {
+        return (
+          <CompanyForm
+            company={selectedCompany || undefined}
+            onBack={handleCompanyBackToList}
+            onSave={handleCompanySave}
+          />
+        );
+      }
+      
+      if (selectedCompany && !isEditingCompany) {
+        // TODO: Implement CompanyProfile component
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center space-x-4">
+              <Button variant="ghost" onClick={handleCompanyBackToList} className="p-2">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Company Details</h2>
+                <p className="text-gray-600">View company information</p>
+              </div>
+            </div>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Company profile view will be implemented in the next update.</h3>
+              <p className="text-gray-500">Company: {selectedCompany.name}</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <CompanyList
+          onCompanySelect={handleCompanySelect}
+          onCompanyEdit={handleCompanyEdit}
+          onCompanyAdd={handleCompanyAdd}
+        />
+      );
+    }
+
     if (activeTab === 'departments') {
+      if (isAssigningHRManagers) {
+        return (
+          <DepartmentHRAssignment
+            onBack={handleHRAssignmentBack}
+          />
+        );
+      }
+
       if (isEditingDepartment) {
         return (
           <DepartmentForm
@@ -240,6 +361,7 @@ function Dashboard() {
           onDepartmentSelect={handleDepartmentSelect}
           onDepartmentEdit={handleDepartmentEdit}
           onDepartmentAdd={handleDepartmentAdd}
+          onAssignHRManagers={handleAssignHRManagers}
         />
       );
     }
@@ -270,6 +392,47 @@ function Dashboard() {
           onJobTitleSelect={handleJobTitleSelect}
           onJobTitleEdit={handleJobTitleEdit}
           onJobTitleAdd={handleJobTitleAdd}
+        />
+      );
+    }
+
+    if (activeTab === 'users') {
+      if (isEditingUser) {
+        return (
+          <UserForm
+            user={selectedUser || undefined}
+            onBack={handleUserBackToList}
+            onSave={handleUserSave}
+          />
+        );
+      }
+      
+      if (selectedUser && !isEditingUser) {
+        // TODO: Implement UserProfile component
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center space-x-4">
+              <Button variant="ghost" onClick={handleUserBackToList} className="p-2">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">User Details</h2>
+                <p className="text-gray-600">View user information</p>
+              </div>
+            </div>
+            <div className="text-center py-12">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">User profile view will be implemented in the next update.</h3>
+              <p className="text-gray-500">User: {selectedUser.userName}</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <UserList
+          onUserSelect={handleUserSelect}
+          onUserEdit={handleUserEdit}
+          onUserAdd={handleUserAdd}
         />
       );
     }

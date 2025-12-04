@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
-  Building2, 
+  Building2,
+  Building, 
   Users, 
   User, 
   Calendar, 
@@ -19,7 +20,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getRoleDisplayName, canAccessEmployeeManagement, canManageDepartments, canManageJobTitles } from '@/lib/auth';
+import { getRoleDisplayName, canAccessEmployeeManagement, canManageDepartments, canManageJobTitles, canManageCompany, canManageUsers } from '@/lib/auth';
 
 interface SidebarProps {
   activeTab: string;
@@ -51,6 +52,12 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       available: true // All users can access leave management
     },
     {
+      id: 'companies',
+      label: 'Companies',
+      icon: Building,
+      available: canManageCompany(user.role)
+    },
+    {
       id: 'departments',
       label: 'Departments',
       icon: Building2,
@@ -61,6 +68,12 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       label: 'Job Titles',
       icon: Briefcase,
       available: canManageJobTitles(user.role)
+    },
+    {
+      id: 'users',
+      label: 'Users',
+      icon: UserPlus,
+      available: canManageUsers(user.role)
     },
     {
       id: 'my-profile',

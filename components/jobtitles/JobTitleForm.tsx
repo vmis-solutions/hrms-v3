@@ -6,14 +6,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   ArrowLeft, 
   Save, 
   Briefcase,
   Loader2
 } from 'lucide-react';
-import { JobTitle } from '@/types';
-import { createJobTitle, updateJobTitle } from '@/lib/employees';
+import { JobTitle, Department } from '@/types';
+import { createJobTitle, updateJobTitle } from '@/lib/jobTitles';
+import { getDepartments } from '@/lib/departments';
 import { toast } from 'sonner';
 
 interface JobTitleFormProps {
@@ -25,25 +33,62 @@ interface JobTitleFormProps {
 export default function JobTitleForm({ jobTitle, onBack, onSave }: JobTitleFormProps) {
   const [formData, setFormData] = useState({
     title: '',
-    description: ''
+    description: '',
+    departmentId: ''
   });
   const [loading, setLoading] = useState(false);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    loadDepartments();
+  }, []);
 
   useEffect(() => {
     if (jobTitle) {
       setFormData({
         title: jobTitle.title,
-        description: jobTitle.description || ''
+        description: jobTitle.description || '',
+        departmentId: jobTitle.departmentId || ''
       });
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        departmentId: ''
+      }));
     }
   }, [jobTitle]);
+
+  const loadDepartments = async () => {
+    try {
+      setDepartmentsLoading(true);
+      const data = await getDepartments();
+      setDepartments(data);
+
+      if (!jobTitle) {
+        // If creating new, pre-select first department for convenience
+        setFormData(prev => ({
+          ...prev,
+          departmentId: prev.departmentId || data[0]?.id || ''
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading departments:', error);
+      toast.error('Failed to load departments');
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.title.trim()) {
       newErrors.title = 'Job title is required';
+    }
+    if (!formData.departmentId) {
+      newErrors.departmentId = 'Department is required';
     }
 
     setErrors(newErrors);
@@ -63,14 +108,16 @@ export default function JobTitleForm({ jobTitle, onBack, onSave }: JobTitleFormP
         // Update existing job title
         savedJobTitle = await updateJobTitle(jobTitle.id, {
           ...formData,
-          description: formData.description || undefined
+          description: formData.description || undefined,
+          departmentId: formData.departmentId
         });
         toast.success('Job title updated successfully');
       } else {
         // Create new job title
         savedJobTitle = await createJobTitle({
           ...formData,
-          description: formData.description || undefined
+          description: formData.description || undefined,
+          departmentId: formData.departmentId
         });
         toast.success('Job title created successfully');
       }
@@ -118,6 +165,30 @@ export default function JobTitleForm({ jobTitle, onBack, onSave }: JobTitleFormP
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Department */}
+              <div className="space-y-2">
+                <Label htmlFor="department">Department *</Label>
+                <Select
+                  value={formData.departmentId}
+                  onValueChange={(value) => handleInputChange('departmentId', value)}
+                  disabled={departmentsLoading}
+                >
+                  <SelectTrigger className={errors.departmentId ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={departmentsLoading ? 'Loading departments...' : 'Select department'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map(department => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.departmentId && (
+                  <p className="text-sm text-red-600">{errors.departmentId}</p>
+                )}
+              </div>
+
               {/* Job Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">Job Title *</Label>

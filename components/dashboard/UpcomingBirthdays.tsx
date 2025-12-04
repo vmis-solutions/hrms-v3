@@ -6,19 +6,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Cake, Gift, Calendar, Users, ChevronRight } from 'lucide-react';
-import { Employee } from '@/types';
-import { getEmployees } from '@/lib/employees';
-
-interface UpcomingBirthday {
-  employee: Employee;
-  daysUntil: number;
-  age: number;
-  isToday: boolean;
-  isThisWeek: boolean;
-}
+import { useAuth } from '@/contexts/AuthContext';
+import { getUpcomingBirthdays, UpcomingBirthdayResponse } from '@/lib/dashboard';
+import { toast } from 'sonner';
 
 export default function UpcomingBirthdays() {
-  const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
+  const { user } = useAuth();
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthdayResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
@@ -28,66 +22,20 @@ export default function UpcomingBirthdays() {
 
   const loadUpcomingBirthdays = async () => {
     try {
-      const employees = await getEmployees();
-      const birthdays = getUpcomingBirthdays(employees);
+      setLoading(true);
+      const birthdays = await getUpcomingBirthdays(30, user?.companyId);
       setUpcomingBirthdays(birthdays);
     } catch (error) {
       console.error('Error loading upcoming birthdays:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load upcoming birthdays');
     } finally {
       setLoading(false);
     }
   };
 
-  const getUpcomingBirthdays = (employees: Employee[]): UpcomingBirthday[] => {
-    const today = new Date();
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-
-    const birthdays: UpcomingBirthday[] = [];
-
-    employees.forEach(employee => {
-      const birthDate = new Date(employee.birthDate);
-      const currentYear = today.getFullYear();
-      
-      // Create birthday for current year
-      const thisYearBirthday = new Date(currentYear, birthDate.getMonth(), birthDate.getDate());
-      
-      // If birthday already passed this year, check next year's birthday
-      let nextBirthday = thisYearBirthday;
-      if (thisYearBirthday < today) {
-        nextBirthday = new Date(currentYear + 1, birthDate.getMonth(), birthDate.getDate());
-      }
-
-      // Check if birthday is within next 30 days
-      if (nextBirthday <= thirtyDaysFromNow) {
-        const daysUntil = Math.ceil((nextBirthday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        const age = currentYear - birthDate.getFullYear() + (nextBirthday.getFullYear() > currentYear ? 1 : 0);
-        
-        birthdays.push({
-          employee,
-          daysUntil: Math.max(0, daysUntil),
-          age,
-          isToday: daysUntil === 0,
-          isThisWeek: daysUntil <= 7
-        });
-      }
-    });
-
-    // Sort by days until birthday
-    return birthdays.sort((a, b) => a.daysUntil - b.daysUntil);
-  };
-
-  const formatBirthdayDate = (employee: Employee, daysUntil: number) => {
-    const birthDate = new Date(employee.birthDate);
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    
-    let nextBirthday = new Date(currentYear, birthDate.getMonth(), birthDate.getDate());
-    if (nextBirthday < today) {
-      nextBirthday = new Date(currentYear + 1, birthDate.getMonth(), birthDate.getDate());
-    }
-
-    return nextBirthday.toLocaleDateString('en-PH', {
+  const formatBirthdayDate = (nextBirthday: string) => {
+    const date = new Date(nextBirthday);
+    return date.toLocaleDateString('en-PH', {
       month: 'short',
       day: 'numeric'
     });
@@ -100,7 +48,7 @@ export default function UpcomingBirthdays() {
     return `In ${daysUntil} days`;
   };
 
-  const getBirthdayBadge = (birthday: UpcomingBirthday) => {
+  const getBirthdayBadge = (birthday: UpcomingBirthdayResponse) => {
     if (birthday.isToday) {
       return (
         <Badge className="bg-pink-100 text-pink-800 animate-pulse">
@@ -209,24 +157,24 @@ export default function UpcomingBirthdays() {
               </div>
               <div className="space-y-3">
                 {todaysBirthdays.map(birthday => (
-                  <div key={birthday.employee.id} className="flex items-center space-x-3">
+                  <div key={birthday.employeeId} className="flex items-center space-x-3">
                     <Avatar className="h-10 w-10 ring-2 ring-pink-200">
-                      <AvatarImage src={birthday.employee.avatar} alt={birthday.employee.firstName} />
+                      <AvatarImage src={birthday.employeeAvatar || undefined} alt={birthday.employeeName} />
                       <AvatarFallback className="bg-pink-100 text-pink-600">
-                        {birthday.employee.firstName[0]}{birthday.employee.lastName[0]}
+                        {birthday.employeeName.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2">
                         <p className="font-medium text-gray-900 truncate">
-                          {birthday.employee.firstName} {birthday.employee.lastName}
+                          {birthday.employeeName}
                         </p>
                         <span className="text-sm text-pink-600 font-medium">
                           🎉 {birthday.age} years old!
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 truncate">
-                        {birthday.employee.jobTitle} • {birthday.employee.department}
+                        {birthday.jobTitle} • {birthday.department}
                       </p>
                     </div>
                   </div>
@@ -244,27 +192,27 @@ export default function UpcomingBirthdays() {
               </div>
               <div className="space-y-3">
                 {thisWeekBirthdays.slice(0, showAll ? thisWeekBirthdays.length : 3).map(birthday => (
-                  <div key={birthday.employee.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-blue-50 transition-colors">
+                  <div key={birthday.employeeId} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-blue-50 transition-colors">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={birthday.employee.avatar} alt={birthday.employee.firstName} />
+                      <AvatarImage src={birthday.employeeAvatar || undefined} alt={birthday.employeeName} />
                       <AvatarFallback className="bg-blue-100 text-blue-600">
-                        {birthday.employee.firstName[0]}{birthday.employee.lastName[0]}
+                        {birthday.employeeName.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <p className="font-medium text-gray-900 truncate">
-                          {birthday.employee.firstName} {birthday.employee.lastName}
+                          {birthday.employeeName}
                         </p>
                         <div className="flex items-center space-x-2">
                           <span className="text-sm text-gray-500">
-                            {formatBirthdayDate(birthday.employee, birthday.daysUntil)}
+                            {formatBirthdayDate(birthday.nextBirthday)}
                           </span>
                           {getBirthdayBadge(birthday)}
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 truncate">
-                        {birthday.employee.jobTitle} • Turning {birthday.age}
+                        {birthday.jobTitle} • Turning {birthday.age}
                       </p>
                     </div>
                   </div>
@@ -285,27 +233,27 @@ export default function UpcomingBirthdays() {
                   .filter(b => !b.isThisWeek)
                   .slice(0, showAll ? undefined : 3)
                   .map(birthday => (
-                    <div key={birthday.employee.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div key={birthday.employeeId} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={birthday.employee.avatar} alt={birthday.employee.firstName} />
+                        <AvatarImage src={birthday.employeeAvatar || undefined} alt={birthday.employeeName} />
                         <AvatarFallback className="bg-gray-100 text-gray-600">
-                          {birthday.employee.firstName[0]}{birthday.employee.lastName[0]}
+                          {birthday.employeeName.split(' ').map(n => n[0]).join('')}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="font-medium text-gray-900 truncate">
-                            {birthday.employee.firstName} {birthday.employee.lastName}
+                            {birthday.employeeName}
                           </p>
                           <div className="flex items-center space-x-2">
                             <span className="text-sm text-gray-500">
-                              {formatBirthdayDate(birthday.employee, birthday.daysUntil)}
+                              {formatBirthdayDate(birthday.nextBirthday)}
                             </span>
                             {getBirthdayBadge(birthday)}
                           </div>
                         </div>
                         <p className="text-sm text-gray-600 truncate">
-                          {birthday.employee.jobTitle} • Turning {birthday.age}
+                          {birthday.jobTitle} • Turning {birthday.age}
                         </p>
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,11 +31,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { JobTitle } from '@/types';
-import { getJobTitles, deleteJobTitle, getEmployees } from '@/lib/employees';
+import { JobTitle, Employee } from '@/types';
+import { getJobTitlesPaginated, deleteJobTitle } from '@/lib/jobTitles';
+import { getEmployees } from '@/lib/employees';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditEmployee, canDeleteEmployee } from '@/lib/auth';
 import { toast } from 'sonner';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 interface JobTitleListProps {
   onJobTitleSelect: (jobTitle: JobTitle) => void;
@@ -50,41 +59,81 @@ export default function JobTitleList({
 }: JobTitleListProps) {
   const { user } = useAuth();
   const [jobTitles, setJobTitles] = useState<(JobTitle & { employeeCount: number })[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [employeesLoaded, setEmployeesLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pageNumber, setPageNumber] = useState(1);
+  const pageSize = 6;
+  const [paginationInfo, setPaginationInfo] = useState({
+    totalCount: 0,
+    totalPages: 1,
+    hasNext: false,
+    hasPrevious: false,
+  });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [jobTitleToDelete, setJobTitleToDelete] = useState<JobTitle | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    loadJobTitles();
+    const handler = setTimeout(() => {
+      setSearchQuery(searchTerm.trim());
+      setPageNumber(1);
+    }, 400);
+
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        const employeesData = await getEmployees();
+        setEmployees(employeesData);
+      } catch (error) {
+        console.error('Error loading employees:', error);
+        toast.error('Failed to load employees for job title counts');
+      } finally {
+        setEmployeesLoaded(true);
+      }
+    };
+
+    loadEmployees();
   }, []);
 
-  const loadJobTitles = async () => {
+  const loadJobTitles = useCallback(async () => {
     try {
-      const [jobTitlesData, employeesData] = await Promise.all([
-        getJobTitles(),
-        getEmployees()
-      ]);
+      setLoading(true);
+      const result = await getJobTitlesPaginated({
+        pageNumber,
+        pageSize,
+        search: searchQuery || undefined,
+      });
       
-      // Count employees per job title
-      const jobTitlesWithCounts = jobTitlesData.map(title => ({
+      const jobTitlesWithCounts = result.items.map(title => ({
         ...title,
-        employeeCount: employeesData.filter(emp => emp.jobTitle === title.title).length
+        employeeCount: employees.filter(emp => emp.jobTitleId === title.id).length
       }));
       
       setJobTitles(jobTitlesWithCounts);
+      setPaginationInfo({
+        totalCount: result.totalCount,
+        totalPages: result.totalPages,
+        hasNext: result.hasNext,
+        hasPrevious: result.hasPrevious,
+      });
     } catch (error) {
       console.error('Error loading job titles:', error);
       toast.error('Failed to load job titles');
     } finally {
       setLoading(false);
     }
-  };
+  }, [employees, pageNumber, pageSize, searchQuery]);
 
-  const filteredJobTitles = jobTitles.filter(jobTitle =>
-    jobTitle.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    if (!employeesLoaded) return;
+    loadJobTitles();
+  }, [pageNumber, searchQuery, employeesLoaded, loadJobTitles]);
 
   const handleDeleteClick = (jobTitle: JobTitle) => {
     setJobTitleToDelete(jobTitle);
@@ -97,7 +146,13 @@ export default function JobTitleList({
     setDeleting(true);
     try {
       await deleteJobTitle(jobTitleToDelete.id);
-      setJobTitles(jobTitles.filter(jt => jt.id !== jobTitleToDelete.id));
+
+      // If deleting the last item on a page (and not first page), go back a page
+      if (jobTitles.length === 1 && pageNumber > 1) {
+        setPageNumber(prev => prev - 1);
+      } else {
+        await loadJobTitles();
+      }
       toast.success('Job title deleted successfully');
     } catch (error) {
       console.error('Error deleting job title:', error);
@@ -154,34 +209,48 @@ export default function JobTitleList({
       </Card>
 
       {/* Results Summary */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2 text-sm text-gray-600">
-          <Briefcase className="h-4 w-4" />
-          <span>
-            Showing {filteredJobTitles.length} of {jobTitles.length} job titles
-          </span>
-        </div>
-      </div>
+      {(() => {
+        const hasResults = paginationInfo.totalCount > 0 && jobTitles.length > 0;
+        const rangeStart = hasResults ? (pageNumber - 1) * pageSize + 1 : 0;
+        const rangeEnd = hasResults ? (pageNumber - 1) * pageSize + jobTitles.length : 0;
+
+        return (
+          <Card>
+        <CardContent className="flex flex-col gap-2 px-6 py-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <Briefcase className="h-4 w-4" />
+              <span>
+                    Showing {hasResults ? `${rangeStart} - ${rangeEnd}` : '0'} of {paginationInfo.totalCount} job titles
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+                  <Badge variant="outline">Page {pageNumber} of {Math.max(paginationInfo.totalPages, 1)}</Badge>
+            </div>
+          </div>
+        </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Job Title Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredJobTitles.length === 0 ? (
+        {jobTitles.length === 0 ? (
           <div className="col-span-full">
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Briefcase className="h-12 w-12 text-gray-300 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No job titles found</h3>
                 <p className="text-gray-500 text-center">
-                  {searchTerm
+                  {searchQuery
                     ? 'Try adjusting your search criteria'
-                    : 'Get started by adding your first job title'
-                  }
+                    : 'Get started by adding your first job title'}
                 </p>
               </CardContent>
             </Card>
           </div>
         ) : (
-          filteredJobTitles.map(jobTitle => (
+          jobTitles.map(jobTitle => (
             <Card key={jobTitle.id} className="hover:shadow-md transition-shadow cursor-pointer">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -232,13 +301,56 @@ export default function JobTitleList({
         )}
       </div>
 
+      {/* Pagination */}
+      {paginationInfo.totalPages > 1 && (
+        <Pagination className="pt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                className="cursor-pointer"
+                onClick={() => paginationInfo.hasPrevious && setPageNumber(prev => Math.max(prev - 1, 1))}
+                aria-disabled={!paginationInfo.hasPrevious}
+              />
+            </PaginationItem>
+            {(() => {
+              const totalPages = paginationInfo.totalPages;
+              const windowSize = 5;
+              const start = Math.max(1, pageNumber - 2);
+              const end = Math.min(totalPages, start + windowSize - 1);
+              const pages = [];
+              for (let page = start; page <= end; page++) {
+                pages.push(page);
+              }
+              return pages.map(page => (
+                <PaginationItem key={page}>
+                  <PaginationLink
+                    className="cursor-pointer"
+                    isActive={page === pageNumber}
+                    onClick={() => setPageNumber(page)}
+                  >
+                    {page}
+                  </PaginationLink>
+                </PaginationItem>
+              ));
+            })()}
+            <PaginationItem>
+              <PaginationNext
+                className="cursor-pointer"
+                onClick={() => paginationInfo.hasNext && setPageNumber(prev => prev + 1)}
+                aria-disabled={!paginationInfo.hasNext}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Job Title</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{jobTitleToDelete?.title}"? 
+              Are you sure you want to delete &ldquo;{jobTitleToDelete?.title}&rdquo;? 
               {jobTitleToDelete && jobTitles.find(jt => jt.id === jobTitleToDelete.id)?.employeeCount && 
                jobTitles.find(jt => jt.id === jobTitleToDelete.id)!.employeeCount > 0 && (
                 <span className="text-red-600 font-medium">

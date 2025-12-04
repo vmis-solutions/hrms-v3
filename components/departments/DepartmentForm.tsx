@@ -19,8 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Department, Employee } from '@/types';
-import { createDepartment, updateDepartment, getEmployees } from '@/lib/employees';
+import { Department, Employee, Company } from '@/types';
+import { createDepartment, updateDepartment } from '@/lib/departments';
+import { getEmployees } from '@/lib/employees';
+import { getCompanies } from '@/lib/companies';
 import { toast } from 'sonner';
 
 interface DepartmentFormProps {
@@ -33,11 +35,14 @@ export default function DepartmentForm({ department, onBack, onSave }: Departmen
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    companyId: '',
     headId: ''
   });
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -45,10 +50,12 @@ export default function DepartmentForm({ department, onBack, onSave }: Departmen
       setFormData({
         name: department.name,
         description: department.description || '',
+        companyId: department.companyId || '',
         headId: department.headId || ''
       });
     }
     loadEmployees();
+    loadCompanies();
   }, [department]);
 
   const loadEmployees = async () => {
@@ -63,11 +70,27 @@ export default function DepartmentForm({ department, onBack, onSave }: Departmen
     }
   };
 
+  const loadCompanies = async () => {
+    try {
+      const companiesData = await getCompanies();
+      setCompanies(companiesData);
+    } catch (error) {
+      console.error('Error loading companies:', error);
+      toast.error('Failed to load companies');
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
       newErrors.name = 'Department name is required';
+    }
+
+    if (!formData.companyId) {
+      newErrors.companyId = 'Company is required';
     }
 
     setErrors(newErrors);
@@ -86,17 +109,19 @@ export default function DepartmentForm({ department, onBack, onSave }: Departmen
       if (department) {
         // Update existing department
         savedDepartment = await updateDepartment(department.id, {
-          ...formData,
+          name: formData.name,
           description: formData.description || undefined,
-          headId: formData.headId || undefined
+          companyId: formData.companyId,
+          headEmployeeId: formData.headId || undefined
         });
         toast.success('Department updated successfully');
       } else {
         // Create new department
         savedDepartment = await createDepartment({
-          ...formData,
+          name: formData.name,
           description: formData.description || undefined,
-          headId: formData.headId || undefined
+          companyId: formData.companyId,
+          headEmployeeId: formData.headId || undefined
         });
         toast.success('Department created successfully');
       }
@@ -169,6 +194,30 @@ export default function DepartmentForm({ department, onBack, onSave }: Departmen
                   placeholder="Brief description of the department's role and responsibilities"
                   rows={3}
                 />
+              </div>
+
+              {/* Company */}
+              <div className="space-y-2">
+                <Label htmlFor="companyId">Company *</Label>
+                <Select
+                  value={formData.companyId}
+                  onValueChange={(value) => handleInputChange('companyId', value)}
+                  disabled={loadingCompanies}
+                >
+                  <SelectTrigger className={errors.companyId ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={loadingCompanies ? "Loading companies..." : "Select a company"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map(company => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.companyId && (
+                  <p className="text-sm text-red-600">{errors.companyId}</p>
+                )}
               </div>
 
               {/* Department Head */}

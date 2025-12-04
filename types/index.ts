@@ -11,6 +11,17 @@ export interface User {
 
 export type UserRole = 'HR_MANAGER' | 'HR_SUPERVISOR' | 'HR_COMPANY' | 'DEPARTMENT_HEAD' | 'EMPLOYEE';
 
+export interface SystemUser {
+  id: string;
+  userName: string;
+  email: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string | null;
+  employeeNumber: string;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -25,6 +36,7 @@ export interface Company {
 
 export interface Employee {
   id: string;
+  userId: string;
   
   // Personal Info
   firstName: string;
@@ -52,6 +64,9 @@ export interface Employee {
   departmentId: string;
   jobTitleId: string;
   employmentStatus: EmploymentStatus;
+  company?: string;
+  department?: string;
+  jobTitle?: string;
   
   // Additional fields
   avatar?: string;
@@ -59,9 +74,6 @@ export interface Employee {
   updatedAt: string;
   
   // Navigation Properties (for future use)
-  company?: Company;
-  department?: Department;
-  jobTitle?: JobTitle;
   leaveApplications?: LeaveApplication[];
   attendances?: Attendance[];
   payrolls?: Payroll[];
@@ -154,8 +166,12 @@ export interface Department {
   description?: string;
   companyId: string;
   headId?: string;
+  headEmployeeId?: string | null;
   createdAt: string;
   updatedAt: string;
+  companyName?: string;
+  employeeCount?: number;
+  hrManagers?: { id?: string; name?: string; email?: string }[];
   company?: Company;
   employees?: Employee[];
   jobTitles?: JobTitle[];
@@ -166,15 +182,18 @@ export interface JobTitle {
   title: string;
   description?: string;
   departmentId: string;
+  companyId?: string;
   createdAt: string;
   updatedAt: string;
+  departmentName?: string;
+  companyName?: string;
   department?: Department;
   employees?: Employee[];
 }
 
 export interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
 }

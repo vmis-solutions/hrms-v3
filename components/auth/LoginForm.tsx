@@ -1,4 +1,4 @@
-'use client';
+  'use client';
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Loader2, Building2, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginForm() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
@@ -20,14 +20,18 @@ export default function LoginForm() {
     e.preventDefault();
     setError('');
 
-    if (!email || !password) {
+    if (!username || !password) {
       setError('Please fill in all fields');
       return;
     }
 
-    const success = await login(email, password);
-    if (!success) {
-      setError('Invalid email or password');
+    try {
+      const success = await login(username, password);
+      if (!success) {
+        setError('Invalid username or password');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Login failed. Please try again.');
     }
   };
 
@@ -39,8 +43,8 @@ export default function LoginForm() {
     { email: 'employee@company.com', role: 'Employee', description: 'Limited employee access' }
   ];
 
-  const loginWithDemo = (demoEmail: string) => {
-    setEmail(demoEmail);
+  const loginWithDemo = (demoUsername: string) => {
+    setUsername(demoUsername);
     setPassword('password123');
   };
 
@@ -67,13 +71,13 @@ export default function LoginForm() {
           <CardContent className="space-y-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
                   disabled={isLoading}
                   className="h-11"
                 />

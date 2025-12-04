@@ -1,4 +1,305 @@
 import { Employee, Department, JobTitle, Company, EmploymentStatus, Gender, CivilStatus } from '@/types';
+import { apiFetch } from '@/lib/api';
+import { getApiUrl } from '@/lib/config';
+
+const API_BASE_URL = getApiUrl('/api/Employee');
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+  errors: string[] | null;
+}
+
+interface EmployeeApiResponse {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string | null;
+  email: string;
+  birthDate: string;
+  gender: number | string;
+  civilStatus: number | string;
+  phoneNumber: string;
+  address: string;
+  sssNumber?: string | null;
+  philHealthNumber?: string | null;
+  pagIbigNumber?: string | null;
+  tin?: string | null;
+  employeeNumber: string;
+  dateHired: string;
+  companyId: string;
+  departmentId: string;
+  jobTitleId: string;
+  employmentStatus: number | string;
+  avatar?: string | null;
+  companyName?: string | null;
+  departmentName?: string | null;
+  jobTitleName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+interface EmployeeListApiResponse {
+  items: EmployeeApiResponse[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface PaginatedEmployeesResult {
+  items: Employee[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+interface EmployeePaginationParams {
+  pageNumber?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+export interface EmployeeInput {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  email: string;
+  birthDate: string;
+  gender: Gender;
+  civilStatus: CivilStatus;
+  phoneNumber: string;
+  address: string;
+  sssNumber?: string;
+  philHealthNumber?: string;
+  pagIbigNumber?: string;
+  tin?: string;
+  employeeNumber: string;
+  dateHired: string;
+  companyId: string;
+  departmentId: string;
+  jobTitleId: string;
+  employmentStatus: EmploymentStatus;
+  avatar?: string;
+}
+
+// getAuthHeaders is now imported from lib/api
+
+const genderMap: Record<number, Gender> = {
+  0: 'Male',
+  1: 'Female',
+  2: 'Other',
+};
+
+const civilStatusMap: Record<number, CivilStatus> = {
+  0: 'Single',
+  1: 'Married',
+  2: 'Divorced',
+  3: 'Widowed',
+  4: 'Separated',
+};
+
+const employmentStatusMap: Record<number, EmploymentStatus> = {
+  0: 'Probationary',
+  1: 'Regular',
+  2: 'Contractual',
+  3: 'ProjectBased',
+  4: 'Resigned',
+  5: 'Terminated',
+};
+
+const genderToApiMap: Record<Gender, number> = {
+  Male: 0,
+  Female: 1,
+  Other: 2,
+};
+
+const civilStatusToApiMap: Record<CivilStatus, number> = {
+  Single: 0,
+  Married: 1,
+  Divorced: 2,
+  Widowed: 3,
+  Separated: 4,
+};
+
+const employmentStatusToApiMap: Record<EmploymentStatus, number> = {
+  Probationary: 0,
+  Regular: 1,
+  Contractual: 2,
+  ProjectBased: 3,
+  Resigned: 4,
+  Terminated: 5,
+};
+
+const normalizeEnumValue = (value: number | string | null | undefined): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number') return isNaN(value) ? undefined : value;
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? undefined : parsed;
+};
+
+const mapGender = (value: number | string | null | undefined): Gender => {
+  const normalized = normalizeEnumValue(value);
+  return (normalized !== undefined ? genderMap[normalized] : undefined) || 'Other';
+};
+
+const mapCivilStatus = (value: number | string | null | undefined): CivilStatus => {
+  const normalized = normalizeEnumValue(value);
+  return (normalized !== undefined ? civilStatusMap[normalized] : undefined) || 'Single';
+};
+
+const mapEmploymentStatus = (value: number | string | null | undefined): EmploymentStatus => {
+  const normalized = normalizeEnumValue(value);
+  return (normalized !== undefined ? employmentStatusMap[normalized] : undefined) || 'Probationary';
+};
+
+const mapGenderToApi = (value: Gender): number => genderToApiMap[value] ?? genderToApiMap.Other;
+const mapCivilStatusToApi = (value: CivilStatus): number => civilStatusToApiMap[value] ?? civilStatusToApiMap.Single;
+const mapEmploymentStatusToApi = (value: EmploymentStatus): number =>
+  employmentStatusToApiMap[value] ?? employmentStatusToApiMap.Probationary;
+
+const normalizeDateString = (value: string): string => {
+  if (!value) {
+    return value;
+  }
+  if (value.includes('T')) {
+    return value;
+  }
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? value : parsed.toISOString();
+};
+
+const normalizeOptionalString = (value?: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildEmployeeRequestPayload = (employee: EmployeeInput, id?: string) => {
+  const payload: any = {
+    UserId: employee.userId,
+    FirstName: employee.firstName,
+    LastName: employee.lastName,
+    Email: employee.email,
+    BirthDate: normalizeDateString(employee.birthDate),
+    Gender: mapGenderToApi(employee.gender),
+    CivilStatus: mapCivilStatusToApi(employee.civilStatus),
+    PhoneNumber: employee.phoneNumber,
+    Address: employee.address,
+    EmployeeNumber: employee.employeeNumber,
+    DateHired: normalizeDateString(employee.dateHired),
+    CompanyId: employee.companyId,
+    DepartmentId: employee.departmentId,
+    JobTitleId: employee.jobTitleId,
+    EmploymentStatus: mapEmploymentStatusToApi(employee.employmentStatus),
+  };
+
+  // Include Id only if provided (for updates)
+  if (id) {
+    payload.Id = id;
+  }
+
+  // Include optional fields only if they have values
+  const middleName = normalizeOptionalString(employee.middleName);
+  if (middleName !== null) {
+    payload.MiddleName = middleName;
+  }
+
+  const sssNumber = normalizeOptionalString(employee.sssNumber);
+  if (sssNumber !== null) {
+    payload.SssNumber = sssNumber;
+  }
+
+  const philHealthNumber = normalizeOptionalString(employee.philHealthNumber);
+  if (philHealthNumber !== null) {
+    payload.PhilHealthNumber = philHealthNumber;
+  }
+
+  const pagIbigNumber = normalizeOptionalString(employee.pagIbigNumber);
+  if (pagIbigNumber !== null) {
+    payload.PagIbigNumber = pagIbigNumber;
+  }
+
+  const tin = normalizeOptionalString(employee.tin);
+  if (tin !== null) {
+    payload.Tin = tin;
+  }
+
+  const avatar = normalizeOptionalString(employee.avatar);
+  if (avatar !== null) {
+    payload.Avatar = avatar;
+  }
+
+  return payload;
+};
+
+const handleEmployeeApiError = (error: any) => {
+  console.error('Employee API error:', error);
+  if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+    throw new Error('Unable to connect to the API server. Please check if it is running and that CORS/SSL settings allow requests from the frontend.');
+  }
+  if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+    throw new Error('SSL certificate error. Visit the API base URL in your browser to trust the certificate or switch to HTTP during development.');
+  }
+  throw error;
+};
+
+const mapEmployeeResponse = (employee: EmployeeApiResponse): Employee => {
+  const now = new Date().toISOString();
+
+  return {
+    id: employee.id,
+    userId: employee.userId,
+    employeeNumber: employee.employeeNumber,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    middleName: employee.middleName || undefined,
+    birthDate: employee.birthDate,
+    gender: mapGender(employee.gender),
+    civilStatus: mapCivilStatus(employee.civilStatus),
+    email: employee.email,
+    phoneNumber: employee.phoneNumber,
+    address: employee.address,
+    sssNumber: employee.sssNumber || undefined,
+    philHealthNumber: employee.philHealthNumber || undefined,
+    pagIbigNumber: employee.pagIbigNumber || undefined,
+    tin: employee.tin || undefined,
+    companyId: employee.companyId,
+    departmentId: employee.departmentId,
+    jobTitleId: employee.jobTitleId,
+    dateHired: employee.dateHired,
+    employmentStatus: mapEmploymentStatus(employee.employmentStatus),
+    avatar: employee.avatar || undefined,
+    createdAt: employee.createdAt || now,
+    updatedAt: employee.updatedAt || now,
+    company: employee.companyName || 'Unknown Company',
+    department: employee.departmentName || 'Unknown Department',
+    jobTitle: employee.jobTitleName || 'Unknown Job Title',
+  };
+};
+
+const buildEmployeeQuery = (params?: EmployeePaginationParams) => {
+  const searchParams = new URLSearchParams();
+  if (params?.pageNumber) {
+    searchParams.set('pageNumber', params.pageNumber.toString());
+  }
+  if (params?.pageSize) {
+    searchParams.set('pageSize', params.pageSize.toString());
+  }
+  if (params?.search && params.search.trim().length > 0) {
+    searchParams.set('search', params.search.trim());
+  }
+  const queryString = searchParams.toString();
+  return queryString ? `${API_BASE_URL}?${queryString}` : API_BASE_URL;
+};
 
 // Mock companies
 export const mockCompanies: Company[] = [
@@ -130,6 +431,7 @@ export const mockJobTitles: JobTitle[] = [
 export const mockEmployees: Employee[] = [
   {
     id: '1',
+    userId: 'user-1',
     employeeNumber: 'EMP001',
     firstName: 'Juan',
     lastName: 'Dela Cruz',
@@ -155,6 +457,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '2',
+    userId: 'user-2',
     employeeNumber: 'EMP002',
     firstName: 'Maria',
     lastName: 'Santos',
@@ -180,6 +483,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '3',
+    userId: 'user-3',
     employeeNumber: 'EMP003',
     firstName: 'Carlos',
     lastName: 'Rodriguez',
@@ -205,6 +509,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '4',
+    userId: 'user-4',
     employeeNumber: 'EMP004',
     firstName: 'Ana',
     lastName: 'Reyes',
@@ -230,6 +535,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '5',
+    userId: 'user-5',
     employeeNumber: 'EMP005',
     firstName: 'Miguel',
     lastName: 'Torres',
@@ -255,6 +561,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '6',
+    userId: 'user-6',
     employeeNumber: 'EMP006',
     firstName: 'Isabella',
     lastName: 'Fernandez',
@@ -280,6 +587,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '7',
+    userId: 'user-7',
     employeeNumber: 'EMP007',
     firstName: 'Roberto',
     lastName: 'Gonzales',
@@ -305,6 +613,7 @@ export const mockEmployees: Employee[] = [
   },
   {
     id: '8',
+    userId: 'user-8',
     employeeNumber: 'EMP008',
     firstName: 'Carmen',
     lastName: 'Valdez',
@@ -357,8 +666,48 @@ export const getCompanyById = async (id: string): Promise<Company | null> => {
 
 // Employee CRUD operations
 export const getEmployees = async (): Promise<Employee[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return mockEmployees.map(getEmployeeDisplayData);
+  const paginated = await getEmployeesPaginated({ pageNumber: 1, pageSize: 1000 });
+  return paginated.items;
+};
+
+export const getEmployeesPaginated = async (
+  params?: EmployeePaginationParams
+): Promise<PaginatedEmployeesResult> => {
+  try {
+    const response = await apiFetch(buildEmployeeQuery(params), {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch employees: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: ApiResponse<EmployeeListApiResponse> = await response.json();
+
+    if (result.success && result.data) {
+      return {
+        items: result.data.items.map(mapEmployeeResponse),
+        totalCount: result.data.totalCount,
+        pageNumber: result.data.pageNumber,
+        pageSize: result.data.pageSize,
+        totalPages: result.data.totalPages,
+        hasPrevious: result.data.hasPrevious,
+        hasNext: result.data.hasNext,
+      };
+    }
+
+    throw new Error(result.message || 'Failed to fetch employees');
+  } catch (error: any) {
+    handleEmployeeApiError(error);
+  }
 };
 
 export const getEmployeeById = async (id: string): Promise<Employee | null> => {
@@ -367,37 +716,151 @@ export const getEmployeeById = async (id: string): Promise<Employee | null> => {
   return employee ? getEmployeeDisplayData(employee) : null;
 };
 
-export const createEmployee = async (employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>): Promise<Employee> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const newEmployee: Employee = {
-    ...employee,
-    id: Date.now().toString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+interface ValidationError {
+  field: string;
+  message: string;
+  value?: string;
+}
+
+interface ValidationErrorResponse {
+  success: false;
+  message: string;
+  data: {
+    errors: ValidationError[];
   };
-  mockEmployees.push(newEmployee);
-  return getEmployeeDisplayData(newEmployee);
+  errors: null;
+}
+
+export const createEmployee = async (employee: EmployeeInput): Promise<Employee> => {
+  try {
+    const response = await apiFetch(API_BASE_URL, {
+      method: 'POST',
+      body: JSON.stringify(buildEmployeeRequestPayload(employee)),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to create employee: ${response.status} ${response.statusText}`;
+      let validationErrors: ValidationError[] = [];
+      
+      try {
+        const errorData: ValidationErrorResponse = JSON.parse(errorText);
+        
+        // Check if this is a validation error response
+        if (errorData.data?.errors && Array.isArray(errorData.data.errors)) {
+          validationErrors = errorData.data.errors;
+          // Create a custom error with validation details
+          const validationError = new Error(errorData.message || 'Validation failed');
+          (validationError as any).validationErrors = validationErrors;
+          throw validationError;
+        }
+        
+        errorMessage = errorData.message || errorMessage;
+      } catch (parseError: any) {
+        // If it's our validation error, re-throw it
+        if (parseError.validationErrors) {
+          throw parseError;
+        }
+        // Otherwise, use the text as error message
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: ApiResponse<EmployeeApiResponse> = await response.json();
+    if (result.success && result.data) {
+      return mapEmployeeResponse(result.data);
+    }
+
+    throw new Error(result.message || 'Failed to create employee');
+  } catch (error: any) {
+    // If it's a validation error, don't call handleEmployeeApiError
+    if (error.validationErrors) {
+      throw error;
+    }
+    handleEmployeeApiError(error);
+    throw error;
+  }
 };
 
-export const updateEmployee = async (id: string, updates: Partial<Employee>): Promise<Employee> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const index = mockEmployees.findIndex(emp => emp.id === id);
-  if (index === -1) throw new Error('Employee not found');
-  
-  const updatedEmployee = {
-    ...mockEmployees[index],
-    ...updates,
-    updatedAt: new Date().toISOString()
-  };
-  mockEmployees[index] = updatedEmployee;
-  return getEmployeeDisplayData(updatedEmployee);
+export const updateEmployee = async (id: string, updates: EmployeeInput): Promise<Employee> => {
+  try {
+    const response = await apiFetch(API_BASE_URL, {
+      method: 'PUT',
+      body: JSON.stringify(buildEmployeeRequestPayload(updates, id)),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to update employee: ${response.status} ${response.statusText}`;
+      let validationErrors: ValidationError[] = [];
+      
+      try {
+        const errorData: ValidationErrorResponse = JSON.parse(errorText);
+        
+        // Check if this is a validation error response
+        if (errorData.data?.errors && Array.isArray(errorData.data.errors)) {
+          validationErrors = errorData.data.errors;
+          // Create a custom error with validation details
+          const validationError = new Error(errorData.message || 'Validation failed');
+          (validationError as any).validationErrors = validationErrors;
+          throw validationError;
+        }
+        
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+        // Log the full error response for debugging
+        console.error('Employee update API error response:', errorData);
+      } catch (parseError: any) {
+        // If it's our validation error, re-throw it
+        if (parseError.validationErrors) {
+          throw parseError;
+        }
+        // Otherwise, use the text as error message
+        errorMessage = errorText || errorMessage;
+        console.error('Employee update API error text:', errorText);
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: ApiResponse<EmployeeApiResponse> = await response.json();
+    if (result.success && result.data) {
+      return mapEmployeeResponse(result.data);
+    }
+
+    throw new Error(result.message || 'Failed to update employee');
+  } catch (error: any) {
+    // If it's a validation error, don't call handleEmployeeApiError
+    if (error.validationErrors) {
+      throw error;
+    }
+    handleEmployeeApiError(error);
+    throw error;
+  }
 };
 
 export const deleteEmployee = async (id: string): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const index = mockEmployees.findIndex(emp => emp.id === id);
-  if (index === -1) throw new Error('Employee not found');
-  mockEmployees.splice(index, 1);
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to delete employee: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error: any) {
+    handleEmployeeApiError(error);
+    throw error;
+  }
 };
 
 // Department CRUD operations
@@ -444,49 +907,147 @@ export const deleteDepartment = async (id: string): Promise<void> => {
   mockDepartments.splice(index, 1);
 };
 
-// Job Title CRUD operations
-export const getJobTitles = async (departmentId?: string): Promise<JobTitle[]> => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  if (departmentId) {
-    return mockJobTitles.filter(title => title.departmentId === departmentId);
+// Employee Document Upload
+const EMPLOYEE_DOC_API_URL = getApiUrl('/api/EmployeeDoc');
+
+export interface EmployeeDocumentUpload {
+  documentName: string;
+  documentType: string;
+  documentDescription: string;
+  document: File;
+  employeeId: string;
+}
+
+export interface EmployeeDocumentResponse {
+  id: string;
+  documentName: string;
+  documentType: string;
+  documentDescription: string;
+  documentPath: string;
+  employeeId: string;
+  file: null;
+  filePath: string;
+  fileSize: number;
+  uploadedDate: string;
+  employeeName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const uploadEmployeeDocument = async (
+  uploadData: EmployeeDocumentUpload
+): Promise<EmployeeDocumentResponse> => {
+  try {
+    const formData = new FormData();
+    formData.append('DocumentName', uploadData.documentName);
+    formData.append('DocumentType', uploadData.documentType);
+    formData.append('DocumentDescription', uploadData.documentDescription);
+    formData.append('Document', uploadData.document);
+    formData.append('EmployeeId', uploadData.employeeId);
+
+    // Don't set Content-Type for FormData - browser will set it with boundary
+    const response = await apiFetch(EMPLOYEE_DOC_API_URL, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+
+      const errorText = await response.text();
+      let errorMessage = `Failed to upload document: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: ApiResponse<EmployeeDocumentResponse> = await response.json();
+
+    if (result.success && result.data) {
+      return result.data;
+    }
+
+    throw new Error(result.message || 'Failed to upload document');
+  } catch (error: any) {
+    console.error('Error uploading document:', error);
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS/SSL settings allow requests from the frontend.');
+    }
+    if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      throw new Error('SSL certificate error. Visit the API base URL in your browser to trust the certificate or switch to HTTP while developing.');
+    }
+    throw error;
   }
-  return mockJobTitles;
 };
 
-export const getJobTitleById = async (id: string): Promise<JobTitle | null> => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return mockJobTitles.find(title => title.id === id) || null;
+export const getEmployeeDocuments = async (employeeId: string): Promise<EmployeeDocumentResponse[]> => {
+  try {
+    const response = await apiFetch(`${EMPLOYEE_DOC_API_URL}/employee/${employeeId}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch employee documents: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: ApiResponse<EmployeeDocumentResponse[]> = await response.json();
+    if (result.success && result.data) {
+      return result.data;
+    }
+    throw new Error(result.message || 'Failed to fetch employee documents');
+  } catch (error: any) {
+    console.error('Error fetching employee documents:', error);
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS/SSL settings allow requests from the frontend.');
+    }
+    if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      throw new Error('SSL certificate error. Visit the API base URL in your browser to trust the certificate or switch to HTTP while developing.');
+    }
+    throw error;
+  }
 };
 
-export const createJobTitle = async (jobTitle: Omit<JobTitle, 'id' | 'createdAt' | 'updatedAt'>): Promise<JobTitle> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const newJobTitle: JobTitle = {
-    ...jobTitle,
-    id: Date.now().toString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  mockJobTitles.push(newJobTitle);
-  return newJobTitle;
-};
+export const deleteEmployeeDocument = async (documentId: string): Promise<void> => {
+  try {
+    const response = await apiFetch(`${EMPLOYEE_DOC_API_URL}/${documentId}`, {
+      method: 'DELETE',
+    });
 
-export const updateJobTitle = async (id: string, updates: Partial<JobTitle>): Promise<JobTitle> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const index = mockJobTitles.findIndex(title => title.id === id);
-  if (index === -1) throw new Error('Job title not found');
-  
-  const updatedJobTitle = {
-    ...mockJobTitles[index],
-    ...updates,
-    updatedAt: new Date().toISOString()
-  };
-  mockJobTitles[index] = updatedJobTitle;
-  return updatedJobTitle;
-};
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to delete employee document: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
 
-export const deleteJobTitle = async (id: string): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  const index = mockJobTitles.findIndex(title => title.id === id);
-  if (index === -1) throw new Error('Job title not found');
-  mockJobTitles.splice(index, 1);
+    const result: ApiResponse<null> = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to delete employee document');
+    }
+  } catch (error: any) {
+    console.error('Error deleting employee document:', error);
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS/SSL settings allow requests from the frontend.');
+    }
+    if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      throw new Error('SSL certificate error. Visit the API base URL in your browser to trust the certificate or switch to HTTP while developing.');
+    }
+    throw error;
+  }
 };

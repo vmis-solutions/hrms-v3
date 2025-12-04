@@ -1,87 +1,37 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { UserPlus, UserCheck, FileText, Calendar, Clock, Award } from 'lucide-react';
-
-interface ActivityItem {
-  id: string;
-  type: 'hire' | 'status_change' | 'document' | 'leave' | 'promotion';
-  employee: {
-    name: string;
-    avatar?: string;
-    position: string;
-  };
-  action: string;
-  timestamp: string;
-  status?: string;
-}
+import { useAuth } from '@/contexts/AuthContext';
+import { getRecentActivities, RecentActivity as RecentActivityType, ActivityType } from '@/lib/dashboard';
+import { toast } from 'sonner';
 
 export default function RecentActivity() {
-  // Mock recent activities with updated employment statuses
-  const activities: ActivityItem[] = [
-    {
-      id: '1',
-      type: 'hire',
-      employee: {
-        name: 'Miguel Torres',
-        avatar: 'https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-        position: 'Senior Developer'
-      },
-      action: 'New employee onboarded',
-      timestamp: '2 hours ago'
-    },
-    {
-      id: '2',
-      type: 'status_change',
-      employee: {
-        name: 'Ana Reyes',
-        avatar: 'https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-        position: 'Financial Analyst'
-      },
-      action: 'Employment status updated',
-      timestamp: '4 hours ago',
-      status: 'Regular'
-    },
-    {
-      id: '3',
-      type: 'document',
-      employee: {
-        name: 'Juan Dela Cruz',
-        avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-        position: 'Software Engineer'
-      },
-      action: 'Government IDs updated (SSS, PhilHealth)',
-      timestamp: '1 day ago'
-    },
-    {
-      id: '4',
-      type: 'leave',
-      employee: {
-        name: 'Carlos Rodriguez',
-        avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-        position: 'Marketing Manager'
-      },
-      action: 'Leave application submitted',
-      timestamp: '2 days ago'
-    },
-    {
-      id: '5',
-      type: 'promotion',
-      employee: {
-        name: 'Maria Santos',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
-        position: 'HR Specialist'
-      },
-      action: 'Probation period completed',
-      timestamp: '3 days ago',
-      status: 'Regular'
-    }
-  ];
+  const { user } = useAuth();
+  const [activities, setActivities] = useState<RecentActivityType[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const getActivityIcon = (type: ActivityItem['type']) => {
+  useEffect(() => {
+    loadActivities();
+  }, []);
+
+  const loadActivities = async () => {
+    try {
+      setLoading(true);
+      const activitiesData = await getRecentActivities(10, user?.companyId);
+      setActivities(activitiesData);
+    } catch (error) {
+      console.error('Error loading recent activities:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load recent activities');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getActivityIcon = (type: ActivityType) => {
     switch (type) {
       case 'hire':
         return <UserPlus className="h-4 w-4 text-green-600" />;
@@ -98,7 +48,7 @@ export default function RecentActivity() {
     }
   };
 
-  const getStatusBadge = (status?: string) => {
+  const getStatusBadge = (status?: string | null) => {
     if (!status) return null;
     
     const variants: { [key: string]: 'default' | 'secondary' | 'destructive' | 'outline' } = {
@@ -117,6 +67,55 @@ export default function RecentActivity() {
     );
   };
 
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  if (loading) {
+    return (
+      <Card className="col-span-1 lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-start space-x-4 p-3 rounded-lg">
+              <div className="h-4 w-4 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse"></div>
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-3 bg-gray-100 rounded animate-pulse w-2/3"></div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (activities.length === 0) {
+    return (
+      <Card className="col-span-1 lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p className="text-gray-500">No recent activities</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="col-span-1 lg:col-span-2">
       <CardHeader>
@@ -129,22 +128,22 @@ export default function RecentActivity() {
               {getActivityIcon(activity.type)}
             </div>
             <Avatar className="h-10 w-10 flex-shrink-0">
-              <AvatarImage src={activity.employee.avatar} alt={activity.employee.name} />
+              <AvatarImage src={activity.employeeAvatar || undefined} alt={activity.employeeName} />
               <AvatarFallback className="bg-gray-100 text-gray-600 text-sm">
-                {activity.employee.name.split(' ').map(n => n[0]).join('')}
+                {activity.employeeName.split(' ').map(n => n[0]).join('')}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-gray-900 truncate">
-                  {activity.employee.name}
+                  {activity.employeeName}
                 </p>
                 <span className="text-sm text-gray-500 flex-shrink-0">
-                  {activity.timestamp}
+                  {formatTimestamp(activity.timestamp)}
                 </span>
               </div>
               <p className="text-sm text-gray-600 truncate">
-                {activity.employee.position}
+                {activity.employeePosition}
               </p>
               <div className="flex items-center space-x-2 mt-1">
                 <p className="text-sm text-gray-800">{activity.action}</p>

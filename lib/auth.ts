@@ -1,73 +1,96 @@
 import { User, UserRole } from '@/types';
+import { apiFetch } from '@/lib/api';
+import { getApiUrl } from '@/lib/config';
 
-// Mock users for demonstration with updated HR roles
-const mockUsers: (User & { password: string })[] = [
-  {
-    id: '1',
-    email: 'hr.manager@company.com',
-    password: 'password123',
-    firstName: 'Maria',
-    lastName: 'Santos',
-    role: 'HR_MANAGER',
-    companyId: 'company-1',
-    avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'
-  },
-  {
-    id: '2',
-    email: 'hr.supervisor@company.com',
-    password: 'password123',
-    firstName: 'Jose',
-    lastName: 'Dela Cruz',
-    role: 'HR_SUPERVISOR',
-    department: 'HR',
-    companyId: 'company-1',
-    avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'
-  },
-  {
-    id: '3',
-    email: 'hr.company@company.com',
-    password: 'password123',
-    firstName: 'Carmen',
-    lastName: 'Rodriguez',
-    role: 'HR_COMPANY',
-    department: 'HR',
-    companyId: 'company-1',
-    avatar: 'https://images.pexels.com/photos/1239288/pexels-photo-1239288.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'
-  },
-  {
-    id: '4',
-    email: 'dept.head@company.com',
-    password: 'password123',
-    firstName: 'Ana',
-    lastName: 'Reyes',
-    role: 'DEPARTMENT_HEAD',
-    department: 'Engineering',
-    companyId: 'company-1',
-    avatar: 'https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'
-  },
-  {
-    id: '5',
-    email: 'employee@company.com',
-    password: 'password123',
-    firstName: 'Juan',
-    lastName: 'Mendoza',
-    role: 'EMPLOYEE',
-    department: 'Engineering',
-    companyId: 'company-1',
-    avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'
-  }
-];
+interface LoginResponse {
+  success: boolean;
+  message: string;
+  data: {
+    token: string;
+    refreshToken: string;
+    userId: string;
+    email: string;
+    fullName: string;
+    role: UserRole;
+    expiresAt: string;
+  } | null;
+  errors: string[] | null;
+}
 
-export const authenticate = async (email: string, password: string): Promise<User | null> => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  const user = mockUsers.find(u => u.email === email && u.password === password);
-  if (user) {
-    const { password: _, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+// Helper function to parse fullName into firstName and lastName
+const parseFullName = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) {
+    return { firstName: '', lastName: '' };
   }
-  return null;
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+  const lastName = parts[parts.length - 1];
+  const firstName = parts.slice(0, -1).join(' ');
+  return { firstName, lastName };
+};
+
+export const authenticate = async (username: string, password: string): Promise<{ user: User; token: string } | null> => {
+  try {
+    const response = await fetch(getApiUrl('/api/Auth/login'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // @ts-ignore
+      credentials: 'omit',
+      body: JSON.stringify({
+        username,
+        password,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Login failed: ${response.status} ${response.statusText}`;
+      try {
+        const errorData: LoginResponse = JSON.parse(errorText);
+        if (!errorData.success && errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: LoginResponse = await response.json();
+
+    if (result.success && result.data) {
+      const { firstName, lastName } = parseFullName(result.data.fullName);
+      
+      const user: User = {
+        id: result.data.userId,
+        email: result.data.email,
+        firstName,
+        lastName,
+        role: result.data.role,
+      };
+
+      return {
+        user,
+        token: result.data.token,
+      };
+    }
+
+    throw new Error(result.message || 'Login failed');
+  } catch (error: any) {
+    console.error('Authentication error:', error);
+    // Provide more helpful error messages
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS is properly configured.');
+    }
+    if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      throw new Error('SSL certificate error. The API server uses a self-signed certificate. Please accept the certificate in your browser or configure the API to use a trusted certificate.');
+    }
+    throw error;
+  }
 };
 
 export const getRoleDisplayName = (role: UserRole): string => {
@@ -111,6 +134,10 @@ export const canManageJobTitles = (role: UserRole): boolean => {
   return ['HR_MANAGER', 'HR_SUPERVISOR', 'HR_COMPANY'].includes(role);
 };
 
+export const canManageUsers = (role: UserRole): boolean => {
+  return ['HR_MANAGER', 'HR_SUPERVISOR'].includes(role);
+};
+
 export const canApplyLeave = (role: UserRole): boolean => {
   return true; // All users can apply for leave
 };
@@ -145,5 +172,71 @@ export const getAccessLevel = (role: UserRole): 'FULL' | 'COMPANY' | 'DEPARTMENT
       return 'LIMITED';
     default:
       return 'LIMITED';
+  }
+};
+
+interface ChangePasswordRequest {
+  CurrentPassword: string;
+  NewPassword: string;
+  ConfirmNewPassword: string;
+}
+
+interface ChangePasswordResponse {
+  success: boolean;
+  message: string;
+  data: null;
+  errors: string[] | null;
+}
+
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+  confirmNewPassword: string
+): Promise<void> => {
+  try {
+    const response = await apiFetch(getApiUrl('/api/Auth/change-password'), {
+      method: 'POST',
+      body: JSON.stringify({
+        CurrentPassword: currentPassword,
+        NewPassword: newPassword,
+        ConfirmNewPassword: confirmNewPassword,
+      } as ChangePasswordRequest),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Password change failed: ${response.status} ${response.statusText}`;
+      
+      try {
+        const errorData: ChangePasswordResponse = JSON.parse(errorText);
+        if (!errorData.success && errorData.message) {
+          errorMessage = errorData.message;
+        }
+        if (errorData.errors && errorData.errors.length > 0) {
+          errorMessage = errorData.errors.join(', ');
+        }
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result: ChangePasswordResponse = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.message || 'Password change failed');
+    }
+  } catch (error: any) {
+    console.error('Password change error:', error);
+    
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Unable to connect to the API server. Please check if the server is running and that CORS is properly configured.');
+    }
+    if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      throw new Error('SSL certificate error. The API server uses a self-signed certificate. Please accept the certificate in your browser or configure the API to use a trusted certificate.');
+    }
+    
+    throw error;
   }
 };

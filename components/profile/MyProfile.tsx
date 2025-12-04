@@ -43,8 +43,10 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Employee, Gender, CivilStatus } from '@/types';
-import { getEmployeeById, updateEmployee, getDepartments, getJobTitles } from '@/lib/employees';
-import { getRoleDisplayName } from '@/lib/auth';
+import { getEmployeeById, updateEmployee, EmployeeInput } from '@/lib/employees';
+import { getJobTitles } from '@/lib/jobTitles';
+import { getDepartments } from '@/lib/departments';
+import { getRoleDisplayName, changePassword } from '@/lib/auth';
 import { toast } from 'sonner';
 
 export default function MyProfile() {
@@ -80,7 +82,7 @@ export default function MyProfile() {
     // Account Settings
     currentPassword: '',
     newPassword: '',
-    confirmPassword: '',
+    confirmNewPassword: '',
     
     // Notification Settings
     emailNotifications: true,
@@ -163,8 +165,8 @@ export default function MyProfile() {
       if (formData.newPassword.length < 8) {
         newErrors.newPassword = 'Password must be at least 8 characters';
       }
-      if (formData.newPassword !== formData.confirmPassword) {
-        newErrors.confirmPassword = 'Passwords do not match';
+      if (formData.newPassword !== formData.confirmNewPassword) {
+        newErrors.confirmNewPassword = 'Passwords do not match';
       }
     }
 
@@ -177,21 +179,48 @@ export default function MyProfile() {
 
     setSaving(true);
     try {
-      const updatedEmployee = await updateEmployee(employee.id, {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        middleName: formData.middleName || undefined,
+      // Update employee profile
+      const employeePayload: EmployeeInput = {
+        userId: employee.userId,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        middleName: formData.middleName.trim() || undefined,
         birthDate: formData.birthDate,
-        gender: formData.gender as Gender,
-        civilStatus: formData.civilStatus as CivilStatus,
-        email: formData.email,
-        phoneNumber: formData.phoneNumber,
-        address: formData.address,
-        sssNumber: formData.sssNumber || undefined,
-        philHealthNumber: formData.philHealthNumber || undefined,
-        pagIbigNumber: formData.pagIbigNumber || undefined,
-        tin: formData.tin || undefined
-      });
+        gender: (formData.gender || employee.gender) as Gender,
+        civilStatus: (formData.civilStatus || employee.civilStatus) as CivilStatus,
+        email: formData.email.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
+        address: formData.address.trim(),
+        sssNumber: formData.sssNumber.trim() || undefined,
+        philHealthNumber: formData.philHealthNumber.trim() || undefined,
+        pagIbigNumber: formData.pagIbigNumber.trim() || undefined,
+        tin: formData.tin.trim() || undefined,
+        employeeNumber: employee.employeeNumber,
+        dateHired: employee.dateHired,
+        companyId: employee.companyId,
+        departmentId: employee.departmentId,
+        jobTitleId: employee.jobTitleId,
+        employmentStatus: employee.employmentStatus,
+        avatar: employee.avatar,
+      };
+
+      const updatedEmployee = await updateEmployee(employee.id, employeePayload);
+      
+      // Change password if new password is provided
+      if (formData.newPassword && formData.currentPassword) {
+        try {
+          await changePassword(
+            formData.currentPassword,
+            formData.newPassword,
+            formData.confirmNewPassword
+          );
+          toast.success('Password changed successfully');
+        } catch (passwordError: any) {
+          console.error('Error changing password:', passwordError);
+          toast.error(passwordError.message || 'Failed to change password');
+          // Still update the employee profile even if password change fails
+        }
+      }
       
       setEmployee(updatedEmployee);
       setEditing(false);
@@ -201,13 +230,13 @@ export default function MyProfile() {
         ...prev,
         currentPassword: '',
         newPassword: '',
-        confirmPassword: ''
+        confirmNewPassword: ''
       }));
       
       toast.success('Profile updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      toast.error(error.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -687,16 +716,16 @@ export default function MyProfile() {
                   {errors.newPassword && <p className="text-sm text-red-600">{errors.newPassword}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                  <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
                   <Input
-                    id="confirmPassword"
+                    id="confirmNewPassword"
                     type={showPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    value={formData.confirmNewPassword}
+                    onChange={(e) => handleInputChange('confirmNewPassword', e.target.value)}
                     disabled={!editing}
-                    className={errors.confirmPassword ? 'border-red-500' : ''}
+                    className={errors.confirmNewPassword ? 'border-red-500' : ''}
                   />
-                  {errors.confirmPassword && <p className="text-sm text-red-600">{errors.confirmPassword}</p>}
+                  {errors.confirmNewPassword && <p className="text-sm text-red-600">{errors.confirmNewPassword}</p>}
                 </div>
               </div>
             </CardContent>
